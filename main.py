@@ -2,6 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from pydantic import BaseModel
+from datetime import datetime
 import models
 from database import SessionLocal, engine, Base
 
@@ -15,6 +16,19 @@ class PostSchema(BaseModel):
 
 class PostResponse(PostSchema):
     id: int
+    class Config:
+        orm_mode = True
+
+class EntrySchema(BaseModel):
+    type: str
+    module: str
+    content: str
+    tags: str
+    metadata: dict = {}
+
+class EntryResponse(EntrySchema):
+    id: int
+    timestamp: datetime
     class Config:
         orm_mode = True
 
@@ -67,3 +81,31 @@ def delete_post(post_id: int, db: Session = Depends(get_db)):
     db.delete(db_post)
     db.commit()
     return {"message": "Post usunięty"}
+
+@app.post("/entries", response_model=EntryResponse)
+def create_entry(entry: EntrySchema, db: Session = Depends(get_db)):
+    db_entry = models.Entry(**entry.dict())
+    db.add(db_entry)
+    db.commit()
+    db.refresh(db_entry)
+    return db_entry
+
+@app.get("/entries", response_model=List[EntryResponse])
+def read_entries(db: Session = Depends(get_db)):
+    return db.query(models.Entry).all()
+
+@app.get("/entries/{entry_id}", response_model=EntryResponse)
+def read_entry(entry_id: int, db: Session = Depends(get_db)):
+    entry = db.query(models.Entry).filter(models.Entry.id == entry_id).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Entry nie istnieje")
+    return entry
+
+@app.delete("/entries/{entry_id}")
+def delete_entry(entry_id: int, db: Session = Depends(get_db)):
+    entry = db.query(models.Entry).filter(models.Entry.id == entry_id).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Entry nie istnieje")
+    db.delete(entry)
+    db.commit()
+    return {"message": "Entry usunięty"}
